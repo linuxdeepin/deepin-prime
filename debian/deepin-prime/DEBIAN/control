@@ -1,0 +1,11 @@
+Package: deepin-prime
+Version: 1.0.0
+Architecture: amd64
+Maintainer: nizhen <nizhen@uniontech.com>
+Installed-Size: 53
+Depends: nvidia-xconfig
+Section: unknown
+Priority: optional
+Multi-Arch: foreign
+Homepage: <insert the upstream URL, if relevant>
+Description: Tools to enable NVIDIA's Prime

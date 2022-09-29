@@ -1,0 +1,14 @@
+Source: deepin-prime
+Section: admin
+Priority: optional
+Maintainer: nizhen <nizhen@uniontech.com>
+Build-Depends: debhelper (>=11~)
+Standards-Version: 4.1.4
+
+Package: deepin-prime
+Architecture: any
+Multi-Arch: foreign
+Depends: ${misc:Depends}, ${shlibs:Depends}, nvidia-xconfig
+Description: Tools to enable NVIDIA's Prime
+ This is a tool which will enable NVIDIA's
+ Prime on MUXless systems.
