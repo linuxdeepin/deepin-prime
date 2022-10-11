@@ -66,16 +66,14 @@ function usage {
         echo "usage: $(basename $0) next-boot $driver_choices|abort"
         echo "usage: $(basename $0) service   check|disable|restore"
     else
-        echo "usage: $(basename $0) $driver_choices|unset|get-current|offload-set|log-view|log-clean"
+        echo "usage: $(basename $0) $driver_choices|unset|get-current|log-view|log-clean"
     fi
 
     echo
     echo "nvidia:      use the NVIDIA proprietary driver"
     echo "intel:       use the Intel card with the \"modesetting\" driver"
-#    echo "intel2:      use the Intel card with the \"intel\" Open Source driver (xf86-video-intel)"
-    echo "amd:         use the Amd card with the \"amd\" Open Source driver (xf86-video-amdgpu)"
+    echo "amd:         use the Amd card with the \"modesetting\" driver"
     echo "offload      PRIME Render Offload possible with >= 435.xx NVIDIA driver"
-    echo "offload-set  choose which intel driver use in PRIME Render Offload"
     echo "unset:       disable effects of this script and let Xorg decide what driver to use"
     echo "get-current: display driver currently configured"
     echo "log-view:    view logfile"
@@ -93,7 +91,7 @@ function usage {
 
 function logging {
     if ! [ -f $prime_logfile ]; then
-        echo "##SUSEPrime logfile##" > $prime_logfile
+        echo "##DeepinPrime logfile##" > $prime_logfile
     fi
     echo "[ $(date +"%H:%M:%S") ] ${1}" >> $prime_logfile
     echo "${1}" | systemd-cat -t suse-prime -p info
@@ -180,7 +178,7 @@ function nvpwr {
         fi
     else
         if ! lsmod | grep bbswitch > /dev/null; then
-            modprobe bbswitch load_state=0 unload_state=1
+            modprobe bbswitch load_state=0 unload_state=1 > /dev/null 2>&1
         else
             #should never happens
             tee /proc/acpi/bbswitch <<<OFF
@@ -304,7 +302,6 @@ function set_amd {
 
 }
 
-
 function common_set {
     # find Intel card bus id. Without this Xorg may fail to start
     lspci_line=$1
@@ -316,7 +313,7 @@ function common_set {
         exit 1
     fi
 
-    card_busid=$(echo $line | cut -f 1 -d ' ' | sed -e 's/\./:/g;s/:/ /g' | awk -Wposix '{printf("PCI:%d:%d:%d\n","0x" $1, "0x" $2, "0x" $3 )}')
+    card_busid=$(echo $line | cut -f 1 -d ' ' | sed -e 's/\./:/g;s/:/ /g' | awk -Wposix '{printf("PCI:%d:%d:%d\n","0x" $(NF-2), "0x" $(NF-1), "0x" $NF )}')
     if [ $? -ne 0 ]; then
         logging "Failed to build $constructor card bus id"
         exit 1
@@ -332,13 +329,19 @@ function common_set {
             logging "Loading nvidia_modules"
             modprobe nvidia_modeset
         fi
-        # extra snippet nvidia for NVIDIA's Prime Render Offload mode
-        gpu_info=$(nvidia-xconfig --query-gpu-info 2> /dev/null)
+
+        nvidia_pci_line=$(lspci | grep "$lspci_nvidia_3d_line" | head -1)
+        if [ "$nvidia_pci_line" == "" ]; then
+            nvidia_pci_line=$(lspci | grep "$lspci_nvidia_vga_line" | head -1)
+        fi
 
         # This may easily fail, if no NVIDIA kernel module is available or alike
-        if [ $? -eq 0 -a "$gpu_info" != "" ]; then
-            # There could be more than on NVIDIA card/GPU; use the first one in that case
-            nvidia_busid=$(echo "$gpu_info" | grep -i "PCI BusID" | head -n 1 | sed 's/PCI BusID ://' | sed 's/ //g')
+        if [ "$nvidia_pci_line" != "" ]; then
+            nvidia_busid=$(echo $nvidia_pci_line | cut -f 1 -d ' ' | sed -e 's/\./:/g;s/:/ /g' | awk -Wposix '{printf("PCI:%d:%d:%d\n","0x" $(NF-2), "0x" $(NF-1), "0x" $NF )}')
+            if [ $? -ne 0 ]; then
+                echo "Failed to build NVIDIA card bus id"
+                exit 1
+            fi
             logging "Adding support for NVIDIA Prime Render Offload"
             cat $xorg_nvidia_prime_render_offload | sed -e 's/PCI:Y:Y:Y/'${nvidia_busid}'/' >> /etc/X11/xorg.conf.d/90-${lowercase_constructor}.conf
         else
@@ -374,13 +377,6 @@ function apply_current {
             current_type="nvidia"
         fi
 
-        elif [ "$current_type" == "amd"  ] && ! lspci | grep "$lspci_amd_line" > /dev/null; then
-
-            # this can happen if user set intel but changed to "Discrete only" in BIOS
-            # in that case the Intel card is not visible to the system and we must switch to nvidia
-
-            logging "Forcing nvidia due to Amd card not found"
-            current_type="nvidia"
         elif [ "$current_type" = "nvidia" ] && \
                ! lspci | grep -q "$lspci_nvidia_vga_line" && \
                ! lspci | grep -q "$lspci_nvidia_3d_line"; then
@@ -392,8 +388,6 @@ function apply_current {
             logging "Forcing intel due to NVIDIA card not found"
             current_type="intel"
         fi
-
-
 
         if [ "$current_type" = "offload" ]; then
             offload_pref_check
@@ -449,8 +443,19 @@ function set_user {
 
 case $type in
 
-    nvidia|intel|intel2|offload|amd)
+    nvidia|intel|offload|amd)
         echo $type catched
+
+        if [ "$type" == "amd"  ] && ! lspci | grep "$lspci_amd_line" > /dev/null; then
+            echo "Amd card not found, exit..."
+            exit 1
+        fi
+
+        if [ "$type" == "intel"  ] && ! lspci | grep "$lspci_intel_line" > /dev/null; then
+            echo "Intel card not found, exit..."
+            exit 1
+        fi
+
         current_check
         check_root
 
@@ -462,27 +467,13 @@ case $type in
         fi
 
         if ! [ -f /var/log/prime-select.log ]; then
-            echo "##SUSEPrime logfile##" > $prime_logfile
+            echo "##DeepinPrime logfile##" > $prime_logfile
         fi
 
         if [ $(wc -l < $prime_logfile) -gt 1000 ]; then
             #cleaning logfile if has more than 1k events
             rm $prime_logfile &> /dev/null
-            echo "##SUSEPrime logfile##" > $prime_logfile
-        fi
-
-        if [ "$type" = "intel2" ];then
-            if ! rpm -q xf86-video-intel > /dev/null; then
-                echo "package xf86-video-intel is not installed";
-                exit 1
-            fi
-        fi
-
-        if [ "$type" = "amd" ];then
-            if ! rpm -q xf86-video-amdgpu > /dev/null; then
-                echo "package xf86-video-amdgpu is not installed";
-                exit 1
-            fi
+            echo "##DeepinPrime logfile##" > $prime_logfile
         fi
 
         if ! { [ "$(bbcheck)" = "[bbswitch] NVIDIA card is ON" ] || [ "$(bbcheck)" = "[bbswitch] NVIDIA card is OFF" ]; }; then
@@ -542,138 +533,6 @@ case $type in
         fi
         echo -e "Logout to switch graphics"
     ;;
-
-    offload-set)
-
-        if [ "$2" = "intel2" ]; then
-            if ! rpm -q xf86-video-intel > /dev/null; then
-                echo "package xf86-video-intel is not installed";
-                exit 1
-            fi
-        fi
-
-        ###
-        ### no need to check for this; amdgpu/nvidia is not implemented 
-        ### for offload on AMD, only modeset/nvidia; you could run
-        ### "prime-select offload-set intel" on AMD/NVIDIA, but this is
-        ### rather confusing; so just use "prime-select offload" there for
-        ### having modeset/nvidia
-        ###
-        #if [ "$2" = "amd" ];then
-        #    if ! rpm -q xf86-video-amdgpu > /dev/null; then
-        #        echo "package xf86-video-amdgpu is not installed";
-        #        exit 1
-        #    fi
-        #fi
-
-        if ! nv_offload_capable; then
-            echo "ERROR: offloading needs nvidia drivers >= 435.xx"
-            exit 1
-        fi
-        case $2 in
-            intel|intel2)
-                echo $2 > /etc/prime/offload_type
-                echo "nvidia-offload is now available with $2 driver"
-                echo "use it with \"prime-select offload\""
-            ;;
-            *)
-                echo "Only intel|intel2 driver is available in nvidia-offload!"
-            ;;
-        esac
-    ;;
-
-    boot)
-
-        check_service
-        check_root
-
-        case $2 in
-
-            nvidia|intel|intel2|amd|last|offload)
-
-                if [ "$2" = "intel2" ]; then
-                    if ! rpm -q xf86-video-intel > /dev/null; then
-                        echo "package xf86-video-intel is not installed";
-                        exit 1
-                    fi
-                fi
-
-                if [ "$2" = "amd" ];then
-                    if ! rpm -q xf86-video-amdgpu > /dev/null; then
-                        echo "package xf86-video-amdgpu is not installed";
-                        exit 1
-                    fi
-                fi
-
-                if [ $2 = "offload" ]; then
-                    if ! nv_offload_capable; then
-                        echo "ERROR: offloading needs nvidia drivers >= 435.xx"
-                        exit 1
-                    fi
-                fi
-                echo "$2" > /etc/prime/boot
-                set_user $SUDO_USER
-                $0 get-boot
-            ;;
-
-            *)
-                echo "Invalid choice"
-                usage
-            ;;
-        esac
-    ;;
-
-    next-boot)
-
-        check_service
-        check_root
-
-        case $2 in
-
-            nvidia|intel|intel2|amd|offload)
-
-                if [ "$2" = "intel2" ]; then
-                    if ! rpm -q xf86-video-intel > /dev/null; then
-                        echo "package xf86-video-intel is not installed";
-                        exit 1
-                    fi
-                fi
-
-                if [ "$2" = "amd" ];then
-                    if ! rpm -q xf86-video-amdgpu > /dev/null; then
-                        echo "package xf86-video-amdgpu is not installed";
-                        exit 1
-                    fi
-                fi
-                if [ $2 = "offload" ]; then
-                    if ! nv_offload_capable; then
-                        echo "ERROR: offloading needs nvidia drivers >= 435.xx"
-                        exit 1
-                    fi
-                fi
-                echo "$2" > /etc/prime/forced_boot
-                set_user $SUDO_USER
-                $0 get-boot
-            ;;
-
-            abort)
-
-                if [ -f /etc/prime/forced_boot ]; then
-                    rm /etc/prime/forced_boot
-                    echo "Next boot forcing aborted"
-                else
-                    echo "Next boot is NOT forced"
-                    exit 1
-                fi
-            ;;
-
-            *)
-                echo "Invalid choice"
-                usage
-            ;;
-        esac
-    ;;
-
 
     get-current)
 
@@ -857,21 +716,6 @@ case $type in
             fi
             logout_switch_no_dm
         fi
-    ;;
-
-    get-boot)
-
-        check_service
-        if [ -f /etc/prime/boot ]; then
-            echo "Default at system boot: $(cat /etc/prime/boot)"
-        else
-            echo "Default at system boot: auto (last)"
-            echo "You can configure it with prime-select boot intel|intel2|nvidia|amd|last"
-        fi
-        if [ -f /etc/prime/forced_boot ]; then
-            echo "Next boot forced to $(cat /etc/prime/forced_boot) by user"
-        fi
-
     ;;
 
     log-view)

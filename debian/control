@@ -8,7 +8,7 @@ Standards-Version: 4.1.4
 Package: deepin-prime
 Architecture: any
 Multi-Arch: foreign
-Depends: ${misc:Depends}, ${shlibs:Depends}, nvidia-xconfig
+Depends: ${misc:Depends}, ${shlibs:Depends}
 Description: Tools to enable NVIDIA's Prime
  This is a tool which will enable NVIDIA's
  Prime on MUXless systems.
