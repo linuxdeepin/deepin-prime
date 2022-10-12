@@ -1,6 +1,6 @@
 87d390e5c265da59147cf7396183520c  usr/bin/prime-select
 e5998d91314c2248c873fa7a2a0ad925  usr/share/doc/deepin-prime/README.Debian
-53fa116b92825a4af881fc040a1c8491  usr/share/doc/deepin-prime/changelog.gz
+5e25d4ae276c8e4edb3e284152588e58  usr/share/doc/deepin-prime/changelog.gz
 d94ec684fa7460da371f79321cfcc5b4  usr/share/doc/deepin-prime/copyright
 3ee171c9845caf906284593553d4fada  usr/share/prime/09-nvidia-modprobe-bbswitch-G04.conf
 e3502397147336ef89ca95b26e282d8a  usr/share/prime/09-nvidia-modprobe-pm-G05.conf

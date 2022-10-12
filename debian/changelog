@@ -1,4 +1,10 @@
-deepin-prime (1.0.0) UNRELEASED; urgency=low
+deepin-prime (1.0.1) unstable; urgency=low
+
+  * upgrade to 1.0.1.
+
+ -- nizhen <nizhen@uniontech.com>  Wed, 12 Oct 2022 10:38:25 +0800
+
+deepin-prime (1.0.0) unstable; urgency=low
 
   * Initial release.
 
